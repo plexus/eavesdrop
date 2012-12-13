@@ -1,8 +1,4 @@
-$:.unshift 'lib' unless $:.first == 'lib'
-
-require 'eavesdrop'
-
-include Eavesdrop
+require 'spec_helper'
 
 class KettleListener < Eavesdropper
   listen_for :boiling

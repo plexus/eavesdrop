@@ -8,20 +8,30 @@ module Eavesdrop
     :emit => :notify
   }
 
+  # module Protocol
+  #   def protocol(name = nil, &blk)
+  #     include Class.new(Eavesdrop::Eavesdropper, &blk).support(name)
+  #   end
+  # end
+
   def self.protocol(name = nil, &blk)
-    Class.new(Eavesdropper, &blk).support(name)
+    include Class.new(Eavesdrop::Eavesdropper, &blk).support(name)
   end
 
   class ListenerList < Array
-    def initialize(events)
-      @events = events
+    attr_accessor :type
+    def initialize( type )
+      @type = type
     end
 
     def method_missing(m, *args)
-      if m =~ /#{API[:notify]}_(.*)/ && @events.include?($1.to_sym)
+      if m =~ /#{API[:notify]}_(.*)/ && @type.protocol.include?($1.to_sym)
         each do |listener|
           listener.send($1, *args)
         end
+      else
+        p @type.protocol
+        super(m ,*args)
       end
     end
   end
@@ -34,10 +44,16 @@ module Eavesdrop
 
         define_method( listeners ) do
           unless instance_variable_defined?( "@#{listeners}" ) 
-            instance_variable_set( "@#{listeners}", ListenerList.new( listener_class.protocol ) )
+            instance_variable_set( "@#{listeners}", ListenerList.new( listener_class ) )
           end
           instance_variable_get( "@#{listeners}" )
         end
+
+        add_listener = ['add', prefix, 'listener'].compact.join('_')
+        define_method( add_listener ) do |listener|
+          self.send(listeners) << listener
+        end
+
       end
     end
 
