@@ -27,7 +27,9 @@ module Eavesdrop
     def method_missing(m, *args)
       if m =~ /#{API[:notify]}_(.*)/ && @type.protocol.include?($1.to_sym)
         each do |listener|
-          listener.send($1, *args)
+          if listener.respond_to? $1
+            listener.send($1, *args)
+          end
         end
       else
         p @type.protocol
