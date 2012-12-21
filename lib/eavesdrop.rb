@@ -9,18 +9,6 @@ module Eavesdrop
     base.send(:extend, ClassMethods)
   end
 
-  def signals
-    listeners.signals
-  end
-
-  def add_listener( l )
-    listeners << l
-  end
-
-  def listeners
-    @listeners ||= self.class.protocol.new_listener_list
-  end
-
   private
 
   def notify(*args)
@@ -28,14 +16,39 @@ module Eavesdrop
   end
 
   module ClassMethods
-    def protocol
-      @protocol || (ancestors[1].respond_to?(:protocol) ? ancestors[1].protocol : nil) # !> instance variable @protocol not initialized
+    attr_accessor :protocols
+
+    def inherited( child )
+      child.protocols = Hash[ self.protocols.map {|name, protocol| [name, protocol.clone] } ]
     end
 
     private
 
-    def signals( &blk )
-      @protocol = Protocol.new(&blk)
+    def signals( name = nil, &blk )
+      @protocols ||= {}
+      @protocols[name] ||= Protocol.new
+      @protocols[name].append( &blk )
+      define_eavesdrop_methods( name )
+    end
+    alias listener_support signals
+
+    def define_eavesdrop_methods( name )
+      meth_signals      = [name, :signals].compact.join('_') 
+      meth_listeners    = [name, :listeners].compact.join('_') 
+      meth_add_listener = [:add, name, :listener].compact.join('_') 
+
+      define_method( meth_signals ) do # !> previous definition of signals was here
+        self.send( meth_listeners ).signals
+      end
+
+      define_method( meth_add_listener ) do | l | # !> previous definition of add_listener was here
+        self.send( meth_listeners ) << l
+      end
+
+      define_method( meth_listeners ) do # !> previous definition of listeners was here
+        @listener_lists ||= {}
+        @listener_lists[name] ||= self.class.protocols[name].new_listener_list
+      end
     end
   end
 
@@ -65,6 +78,10 @@ module Eavesdrop
 
     def initialize( &blk )
       @signals = []
+      append( &blk ) if block_given?
+    end
+
+    def append( &blk )
       instance_eval( &blk )
     end
 
@@ -75,11 +92,15 @@ module Eavesdrop
     def new_listener_list
       ListenerList.new( self )
     end
-  end
-end
 
-class Train
-  include Eavesdrop
+    def clone
+      super.tap do |cln|
+        cln.append do
+          @signals = @signals.clone
+        end
+      end
+    end
+  end
 end
 
 ############################################################
@@ -142,10 +163,45 @@ describe Eavesdrop, 'when included' do
     let(:listener) {double('listener')}
     it "should notify registered listeners" do
       listener.should_receive(:something_happened)
+      instance.add_listener listener
       instance.do_something
     end
+  end  
+
+  context "when having multiple signal blocks" do
+    let(:basic_class) do
+      Class.new do
+        include Eavesdrop
+        signals { send_out :something_happened }
+        signals { send_out :something_else }
+      end
+    end
+
+    it "should merge them together" do
+      instance.listeners.signals.should =~ [:something_happened, :something_else]
+    end
+
+    context "in a subclass" do
+      let(:inherited_class) do
+        Class.new(basic_class) do
+          signals { send_out :something_more }
+        end
+      end
+
+      let(:inherited_instance) {inherited_class.new}
+
+      it "should merge them together" do
+        inherited_instance.listeners.signals.should =~ [:something_happened, :something_else, :something_more]
+      end
+
+      it "should not touch the base class" do
+        inherited_instance # so it's evaluated
+        instance.listeners.signals.should =~ [:something_happened, :something_else]
+      end
+
+    end
   end
-  
+
 end
 
 describe Eavesdrop::Protocol do
@@ -205,23 +261,39 @@ describe Eavesdrop::ListenerList do
   end
 end
 
+describe Eavesdrop, 'named protocols' do
+  let :basic_class do
+    Class.new do
+      include Eavesdrop
+      signals :record do
+        send_out :added
+        send_out :removed
+      end
+
+      def add_record(r)
+        record_listeners.notify(:added, r)
+      end
+    end
+  end
+  let(:instance) { basic_class.new }
+  let(:listener) { double('record_listener') }
+  let(:record)   { double('record') }
+
+  it "should prefix #add_listener" do
+    instance.add_record_listener( listener )
+  end
+
+  it "should prefix #listeners" do
+    listener.should_receive( :added ).once.with( record )
+    instance.add_record_listener( listener )
+    instance.add_record( record )
+  end
+end
+
 RSpec::Core::Runner.run([]) #(['--format', 'd'])
 
-# >> ....F..........
+
+# >> ....................
 # >> 
-# >> Failures:
-# >> 
-# >>   1) Eavesdrop when included notify should notify registered listeners
-# >>      Failure/Error: Unable to find matching line from backtrace
-# >>        (Double "listener").something_happened(any args)
-# >>            expected: 1 time
-# >>            received: 0 times
-# >>      # -:144:in `block (3 levels) in <main>'
-# >>      # -:208:in `<main>'
-# >> 
-# >> Finished in 0.03478 seconds
-# >> 15 examples, 1 failure
-# >> 
-# >> Failed examples:
-# >> 
-# >> rspec -:143 # Eavesdrop when included notify should notify registered listeners
+# >> Finished in 0.00627 seconds
+# >> 20 examples, 0 failures
