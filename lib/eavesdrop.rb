@@ -27,22 +27,21 @@ module Eavesdrop
       @protocols[name].append( &blk )
       define_eavesdrop_methods( name )
     end
-    alias listener_support signals
 
     def define_eavesdrop_methods( name )
       meth_signals      = [name, :signals].compact.join('_') 
       meth_listeners    = [name, :listeners].compact.join('_') 
       meth_add_listener = [:add, name, :listener].compact.join('_') 
 
-      define_method( meth_signals ) do # !> previous definition of signals was here
+      define_method( meth_signals ) do
         self.send( meth_listeners ).signals
       end
 
-      define_method( meth_add_listener ) do | l | # !> previous definition of add_listener was here
+      define_method( meth_add_listener ) do | l |
         self.send( meth_listeners ) << l
       end
 
-      define_method( meth_listeners ) do # !> previous definition of listeners was here
+      define_method( meth_listeners ) do
         @listener_lists ||= {}
         @listener_lists[name] ||= self.class.protocols[name].new_listener_list
       end
