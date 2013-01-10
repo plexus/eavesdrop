@@ -2,7 +2,7 @@ require 'spec_helper'
 
 class Giraffe < Struct.new( :name )
   include Eavesdrop
-  listener_support do
+  signals do
     send_out :hungry
     send_out :tired
   end
