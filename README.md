@@ -23,53 +23,35 @@ How about Ruby's built-in Observable?
 - Support multiple protocols (listener types) in one class.
 - Any class that implements the specified methods can be a listener, you don't need a specific base class. So you can do stuff like inheriting from SimpleDelegator.
 
-## Explicit listener types
-
-```ruby
-class TemperatureListener < Eavesdrop::Eavesdropper
-  listen_for :temperature_changed
-end
-
-class Weather
-  include TemperatureListener.support( :heat )
-    # defines methods #heat_listeners and #add_heat_listener
-
-  def heat_up
-    @heat ||= 0
-    @heat += 2
-    heat_listeners.notify_temperature_changed( @heat )
-		 # calls #temperature_changed( @heat ) on each listener
-  end
-end
-
-Weather.new.tap do |w|
-  w.add_heat_listener( Class.new { def temperature_changed( deg ); puts "it's now #{deg} degrees" ; end }.new )
-  w.heat_up
-  w.heat_up
-end
-```
-
-## Anonymous listener types
+## An example
 
 ```ruby
 class Weather
-  include Eavesdrop.protocol(:heat) {
+  include Eavesdrop
+  signals do
     send_out :temperature_changed
-  }
+  end
 
   def heat_up
     @heat ||= 0
     @heat += 2
-    heat_listeners.notify_temperature_changed( @heat )
+    listeners.notify( :temperature_changed, @heat )
   end
 end
 
+class Listener
+  def temperature_changed( deg )
+    puts "it's now #{deg} degrees"
+  end
+end 
+
 Weather.new.tap do |w|
-  w.add_heat_listener( Class.new { def temperature_changed( deg ); puts "it's now #{deg} degrees" ; end }.new )
+  w.add_listener( Listener.new )
   w.heat_up
   w.heat_up
 end
 ```
+
 ## Caveat
 
 This is an experiment to see where turning this simple pattern into a proper library might lead to. The API will probably still change significantly. Ideas/suggestions are very welcome.
